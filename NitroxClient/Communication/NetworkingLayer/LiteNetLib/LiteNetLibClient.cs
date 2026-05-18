@@ -20,7 +20,7 @@ public class LiteNetLibClient : IClient
 {
     private readonly NetManager client;
 
-    private readonly AutoResetEvent connectedEvent = new(false);
+    private TaskCompletionSource<bool> connectedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly NetDataWriter dataWriter = new();
     private readonly INetworkDebugger networkDebugger;
     private readonly PacketReceiver packetReceiver;
@@ -65,6 +65,8 @@ public class LiteNetLibClient : IClient
     {
         Log.Info("Initializing LiteNetLibClient...");
 
+        connectedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
         // ConfigureAwait(false) is needed because Unity uses a custom "UnitySynchronizationContext". Which makes async/await work like Unity coroutines.
         // Because this Task.Run is async-over-sync this would otherwise blocks the main thread as it wants to, without ConfigureAwait(false), continue on the same thread (i.e. main thread).
         await Task.Run(() =>
@@ -73,8 +75,17 @@ public class LiteNetLibClient : IClient
             client.Connect(ipAddress, serverPort, "nitrox");
         }).ConfigureAwait(false);
 
-        connectedEvent.WaitOne(2000);
-        connectedEvent.Reset();
+        // Wait for the connection callback or timeout after 2 seconds, without blocking the async thread.
+        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(2000));
+        try
+        {
+            cts.Token.Register(() => connectedTcs.TrySetResult(false));
+            await connectedTcs.Task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Timeout reached without connection - IsConnected will remain false.
+        }
     }
 
     public void Send(Packet packet)
@@ -118,9 +129,9 @@ public class LiteNetLibClient : IClient
 
     private void Connected(NetPeer peer)
     {
-        // IsConnected must happen before Set() so that its state is noticed WHEN we unblock the thread (cf. connectedEvent.WaitOne(...))
+        // IsConnected must happen before TrySetResult so that its state is noticed when the awaiter resumes.
         IsConnected = true;
-        connectedEvent.Set();
+        connectedTcs.TrySetResult(true);
         Log.Info("Connected to server");
     }
 

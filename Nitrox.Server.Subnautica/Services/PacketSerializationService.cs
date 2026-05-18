@@ -56,7 +56,9 @@ internal sealed class PacketSerializationService : BackgroundService
         {
             if (!init.Task.IsCompletedSuccessfully)
             {
-                init.Task.Wait(TimeSpan.FromSeconds(10));
+                // Use WaitAsync with timeout to avoid indefinite blocking, then GetAwaiter().GetResult()
+                // to unwrap AggregateException and properly propagate the original exception.
+                init.Task.WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
             }
             packet.SerializeInto(stream);
             implementationSwapper(new LoadedSerializer());

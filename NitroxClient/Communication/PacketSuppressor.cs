@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using Nitrox.Model.Packets;
 using Nitrox.Model.Subnautica.Packets;
 
@@ -17,13 +18,13 @@ public readonly struct PacketSuppressor<T> : IDisposable where T : Packet
 
     public static PacketSuppressor<T> Suppress()
     {
-        suppressCount++;
+        Interlocked.Increment(ref suppressCount);
         return instance;
     }
 
     public void Dispose()
     {
-        suppressCount--;
+        Interlocked.Decrement(ref suppressCount);
     }
 }
 

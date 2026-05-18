@@ -6,7 +6,7 @@ namespace NitroxClient.Communication;
 
 public class PacketReceiver
 {
-    private readonly Queue<Packet> receivedPackets = new(16);
+    private readonly Queue<Packet> receivedPackets = new(256);
     private readonly object receivedPacketsLock = new();
 
     public void Add(Packet packet)
