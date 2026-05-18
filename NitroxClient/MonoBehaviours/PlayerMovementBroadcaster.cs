@@ -10,7 +10,31 @@ namespace NitroxClient.MonoBehaviours;
 
 public class PlayerMovementBroadcaster : MonoBehaviour
 {
+    /// <summary>
+    /// Normal broadcast interval when the player is moving (30 Hz).
+    /// </summary>
+    private const float ACTIVE_BROADCAST_PERIOD = 1f / 30f;
+
+    /// <summary>
+    /// Reduced broadcast interval when the player is stationary (1 Hz) to save bandwidth.
+    /// </summary>
+    private const float STATIONARY_BROADCAST_PERIOD = 1f;
+
+    /// <summary>
+    /// Minimum position change (in unity units) to consider the player as moving.
+    /// </summary>
+    private const float POSITION_THRESHOLD = 0.01f;
+
+    /// <summary>
+    /// Minimum rotation change (in degrees) to consider the player as having rotated.
+    /// </summary>
+    private const float ROTATION_THRESHOLD = 0.1f;
+
     private LocalPlayer localPlayer;
+    private float lastBroadcastTime;
+    private Vector3 lastBroadcastPosition;
+    private Quaternion lastBroadcastBodyRotation;
+    private Quaternion lastBroadcastAimingRotation;
 
     public void Awake()
     {
@@ -65,6 +89,29 @@ public class PlayerMovementBroadcaster : MonoBehaviour
             aimingRotation = undoVehicleAngle * aimingRotation;
             currentPosition = subRootTransform.TransformPoint(currentPosition);
         }
+
+        // Determine if the player has moved or rotated significantly since the last broadcast
+        float positionDelta = Vector3.Distance(lastBroadcastPosition, currentPosition);
+        float bodyRotationDelta = Quaternion.Angle(lastBroadcastBodyRotation, bodyRotation);
+        float aimingRotationDelta = Quaternion.Angle(lastBroadcastAimingRotation, aimingRotation);
+
+        bool hasMoved = positionDelta > POSITION_THRESHOLD ||
+                        bodyRotationDelta > ROTATION_THRESHOLD ||
+                        aimingRotationDelta > ROTATION_THRESHOLD;
+
+        // Use faster broadcast rate when moving, slower when stationary
+        float broadcastPeriod = hasMoved ? ACTIVE_BROADCAST_PERIOD : STATIONARY_BROADCAST_PERIOD;
+        float currentTime = Time.time;
+
+        if (currentTime < lastBroadcastTime + broadcastPeriod)
+        {
+            return;
+        }
+
+        lastBroadcastTime = currentTime;
+        lastBroadcastPosition = currentPosition;
+        lastBroadcastBodyRotation = bodyRotation;
+        lastBroadcastAimingRotation = aimingRotation;
 
         localPlayer.BroadcastLocation(currentPosition, playerVelocity, bodyRotation, aimingRotation);
     }

@@ -47,11 +47,15 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic.Entities
 
         public List<Entity> GetEntities(List<NitroxId> ids)
         {
-            return entitiesById.Join(ids,
-                                        entity => entity.Value.Id,
-                                        id => id,
-                                        (entity, id) => entity.Value)
-                                .ToList();
+            List<Entity> result = new(ids.Count);
+            foreach (NitroxId id in ids)
+            {
+                if (entitiesById.TryGetValue(id, out Entity entity))
+                {
+                    result.Add(entity);
+                }
+            }
+            return result;
         }
 
         public List<T> GetEntities<T>()

@@ -16,9 +16,31 @@ public class EntityPositionBroadcaster : MonoBehaviour
 {
     public static readonly float BROADCAST_INTERVAL = 0.25f;
 
+    /// <summary>
+    /// Minimum position change (in unity units) before an entity update is broadcast.
+    /// Stationary entities below this threshold are suppressed to save bandwidth.
+    /// </summary>
+    private const float POSITION_THRESHOLD = 0.01f;
+
+    /// <summary>
+    /// Minimum rotation change (in degrees) before an entity update is broadcast.
+    /// </summary>
+    private const float ROTATION_THRESHOLD = 0.1f;
+
+    /// <summary>
+    /// Maximum time (in seconds) between broadcasts for a stationary entity,
+    /// ensuring eventual consistency even when nothing moves.
+    /// </summary>
+    private const float MAX_TIME_WITHOUT_BROADCAST = 5f;
+
     private static HashSet<NitroxId> watchingEntityIds = new();
 
     private static Dictionary<NitroxId, SplineTransformUpdate> splineUpdatesById = new();
+
+    /// <summary>
+    /// Tracks last broadcast position per entity for stationary suppression.
+    /// </summary>
+    private static Dictionary<NitroxId, (Vector3 Position, Quaternion Rotation, float LastBroadcastTime)> lastBroadcastState = new();
 
     private IPacketSender packetSender;
 
@@ -41,10 +63,10 @@ public class EntityPositionBroadcaster : MonoBehaviour
             if (watchingEntityIds.Count > 0)
             {
                 Dictionary<NitroxId, GameObject> nonSplineEntitiesById = NitroxEntity.GetObjectsFrom(watchingEntityIds)
-                                                                                     .Where(item => !item.Value.GetComponent<SwimBehaviour>() && 
+                                                                                     .Where(item => !item.Value.GetComponent<SwimBehaviour>() &&
                                                                                                     !item.Value.GetComponent<WalkBehaviour>())
                                                                                      .ToDictionary(item => item.Key, item => item.Value);
-                
+
                 List<EntityTransformUpdate> updates = BuildUpdates(nonSplineEntitiesById);
 
                 if (updates.Count > 0)
@@ -58,12 +80,35 @@ public class EntityPositionBroadcaster : MonoBehaviour
     private List<EntityTransformUpdate> BuildUpdates(Dictionary<NitroxId, GameObject> nonSplineEntitiesById)
     {
         List<EntityTransformUpdate> updates = new();
+        float currentTime = Time.time;
 
         foreach (KeyValuePair<NitroxId, GameObject> gameObjectWithId in nonSplineEntitiesById)
         {
             if (gameObjectWithId.Value)
             {
-                updates.Add(new RawTransformUpdate(gameObjectWithId.Key, gameObjectWithId.Value.transform.position.ToDto(), gameObjectWithId.Value.transform.rotation.ToDto()));
+                Vector3 currentPosition = gameObjectWithId.Value.transform.position;
+                Quaternion currentRotation = gameObjectWithId.Value.transform.rotation;
+
+                bool shouldBroadcast = true;
+
+                if (lastBroadcastState.TryGetValue(gameObjectWithId.Key, out var lastState))
+                {
+                    float positionDelta = Vector3.Distance(lastState.Position, currentPosition);
+                    float rotationDelta = Quaternion.Angle(lastState.Rotation, currentRotation);
+                    float timeSinceLastBroadcast = currentTime - lastState.LastBroadcastTime;
+
+                    // Suppress if position and rotation haven't changed enough, unless we've exceeded the safety interval
+                    if (positionDelta <= POSITION_THRESHOLD && rotationDelta <= ROTATION_THRESHOLD && timeSinceLastBroadcast < MAX_TIME_WITHOUT_BROADCAST)
+                    {
+                        shouldBroadcast = false;
+                    }
+                }
+
+                if (shouldBroadcast)
+                {
+                    updates.Add(new RawTransformUpdate(gameObjectWithId.Key, currentPosition.ToDto(), currentRotation.ToDto()));
+                    lastBroadcastState[gameObjectWithId.Key] = (currentPosition, currentRotation, currentTime);
+                }
             }
         }
 
@@ -71,7 +116,7 @@ public class EntityPositionBroadcaster : MonoBehaviour
         updates.AddRange(splineUpdatesById.Values.Where(
             splineUpdate => this.Resolve<SimulationOwnership>().HasAnyLockType(splineUpdate.Id)
         ));
-        
+
         splineUpdatesById.Clear();
 
         return updates;
@@ -94,6 +139,7 @@ public class EntityPositionBroadcaster : MonoBehaviour
     public static void StopWatchingEntity(NitroxId id)
     {
         watchingEntityIds.Remove(id);
+        lastBroadcastState.Remove(id);
     }
 
     public static void RegisterSplineMovementChange(NitroxId id, GameObject gameObject, Vector3 targetPos, Vector3 targetDir, float velocity)
