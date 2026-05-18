@@ -117,8 +117,7 @@ internal sealed class DisconnectProcessor(PlayerManager remotePlayerManager, Pla
         SetPlayerGreyedOut(player, false);
 
         Log.Info($"{player.PlayerName} reconnected within grace period, restoring state");
-        Log.InGame(Language.main.Get("Nitrox_PlayerDisconnected").Replace("{PLAYER}", player.PlayerName)
-                   .Replace("disconnected", "reconnected"));
+        Log.InGame($"{player.PlayerName} reconnected.");
 
         return true;
     }

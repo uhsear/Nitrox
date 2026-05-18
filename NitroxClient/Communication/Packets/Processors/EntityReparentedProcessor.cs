@@ -35,7 +35,7 @@ internal sealed class EntityReparentedProcessor(Entities entities) : IClientPack
             if (newParent.TryGetComponent(out WaterPark waterPark))
             {
                 // If the entity is already in a WaterPark
-                if (waterParkItem.currentWaterPark)
+                if (waterParkItem && waterParkItem.currentWaterPark)
                 {
                     waterParkItem.SetWaterPark(waterPark);
                     return Task.CompletedTask;

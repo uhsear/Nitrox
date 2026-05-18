@@ -240,10 +240,17 @@ namespace Nitrox.Server.Subnautica.Models.GameLogic.Entities
         public void TransferChildren(Entity parent, Entity newParent, Func<Entity, bool> filter = null)
         {
             List<Entity> childrenToMove = filter != null ?
-                [.. parent.ChildEntities.Where(filter)] : parent.ChildEntities;
+                [.. parent.ChildEntities.Where(filter)] : [.. parent.ChildEntities];
 
             // In case parent == newParent (which is actually a case used) we need removal to happen before adding the entities back
-            parent.ChildEntities.RemoveAll(entity => filter(entity));
+            if (filter != null)
+            {
+                parent.ChildEntities.RemoveAll(entity => filter(entity));
+            }
+            else
+            {
+                parent.ChildEntities.Clear();
+            }
 
             foreach (Entity childEntity in childrenToMove)
             {
