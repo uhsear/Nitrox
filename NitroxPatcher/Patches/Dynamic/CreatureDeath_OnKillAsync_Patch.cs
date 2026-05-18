@@ -87,12 +87,15 @@ public sealed partial class CreatureDeath_OnKillAsync_Patch : NitroxPatch, IDyna
             return;
         }
 
+        // Check ownership before stopping simulation, since StopSimulatingEntity clears the lock.
+        // Only the simulation owner broadcasts from here; non-owners broadcast from LiveMixin_Kill_Patch
+        // to avoid duplicate packets (Issue #2510).
+        bool wasSimulationOwner = Resolve<SimulationOwnership>().HasAnyLockType(creatureId);
+
         Resolve<SimulationOwnership>().StopSimulatingEntity(creatureId);
         EntityPositionBroadcaster.RemoveEntityMovementControl(creatureDeath.gameObject, creatureId);
 
-        // Only the simulation owner broadcasts from here; non-owners broadcast from LiveMixin_Kill_Patch
-        // to avoid duplicate packets (Issue #2510)
-        if (!IsRemotelyCalled && Resolve<SimulationOwnership>().HasAnyLockType(creatureId))
+        if (!IsRemotelyCalled && wasSimulationOwner)
         {
             Resolve<IPacketSender>().Send(new RemoveCreatureCorpse(creatureId, creatureDeath.transform.localPosition.ToDto(), creatureDeath.transform.localRotation.ToDto(), creatureDeath.lastDamageWasHeat));
         }
