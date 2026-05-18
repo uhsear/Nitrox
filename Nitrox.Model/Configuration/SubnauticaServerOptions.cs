@@ -17,11 +17,21 @@ public sealed partial class SubnauticaServerOptions
 {
     public const string CONFIG_SECTION_PATH = "GameServer";
 
-    [Range(1, byte.MaxValue)]
-    public byte MaxConnections { get; set; } = 100;
+    public const int MAX_CONNECTIONS_MIN = 1;
+    public const int MAX_CONNECTIONS_MAX = byte.MaxValue;
+    public const int SERVER_PORT_MIN = 1024;
+    public const int SERVER_PORT_MAX = 65535;
+    public const int SAVE_INTERVAL_MIN_MS = 30000;
 
-    [Range(1, ushort.MaxValue)]
-    public ushort ServerPort { get; set; } = SubnauticaServerConstants.DEFAULT_PORT;
+    public const byte DEFAULT_MAX_CONNECTIONS = 100;
+    public const ushort DEFAULT_SERVER_PORT = SubnauticaServerConstants.DEFAULT_PORT;
+    public const int DEFAULT_SAVE_INTERVAL_MS = 120000;
+
+    [Range(MAX_CONNECTIONS_MIN, MAX_CONNECTIONS_MAX)]
+    public byte MaxConnections { get; set; } = DEFAULT_MAX_CONNECTIONS;
+
+    [Range(SERVER_PORT_MIN, SERVER_PORT_MAX)]
+    public ushort ServerPort { get; set; } = DEFAULT_SERVER_PORT;
 
     [PropertyDescription("If not empty, users will be asked to enter a password to join the server")]
     [RegularExpression(@"\w+")]
@@ -29,8 +39,8 @@ public sealed partial class SubnauticaServerOptions
 
     public SubnauticaGameMode GameMode { get; set; }
 
-    [PropertyDescription("Measured in milliseconds. Values less than 1 second will disable auto saving.")]
-    public int SaveInterval { get; set; } = (int)TimeSpan.FromMinutes(2).TotalMilliseconds;
+    [PropertyDescription("Measured in milliseconds. Values less than 30000 (30 seconds) will disable auto saving.")]
+    public int SaveInterval { get; set; } = DEFAULT_SAVE_INTERVAL_MS;
 
     [Range(0, int.MaxValue)]
     public int MaxBackups { get; set; } = 10;

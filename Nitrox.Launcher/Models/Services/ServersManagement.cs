@@ -32,6 +32,20 @@ internal sealed class ServersManagement(ServerService serverService) : Streaming
         return CompletedTask;
     }
 
+    public ValueTask SetServerStatus(ServerStatusInfo status)
+    {
+        ServerEntry? entry = serverService.GetServerEntryByAnyOf(processId, saveName);
+        if (entry == null)
+        {
+            return CompletedTask;
+        }
+        entry.PlayerCount = status.PlayerCount;
+        entry.UptimeSeconds = status.UptimeSeconds;
+        entry.LastSaveTime = status.LastSaveTime;
+        entry.IsAutoSaveEnabled = status.IsAutoSaveEnabled;
+        return CompletedTask;
+    }
+
     public ValueTask AddOutputLine(string category, DateTimeOffset? localTime, int level, string message)
     {
         try

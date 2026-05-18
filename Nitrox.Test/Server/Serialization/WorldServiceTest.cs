@@ -15,7 +15,6 @@ using Nitrox.Server.Subnautica.Models.GameLogic.Unlockables;
 namespace Nitrox.Server.Subnautica.Models.Serialization.World;
 
 [TestClass]
-[SuppressMessage("Usage", "MSTEST0002:Test classes should have valid layout", Justification = "Necessary because PersistedWorldData is internal now.")]
 [SuppressMessage("Usage", "MSTEST0010:ClassInitialize methods should have valid layout", Justification = "Necessary because PersistedWorldData is internal now.")]
 [SuppressMessage("Usage", "MSTEST0011:ClassCleanup methods should have valid layout", Justification = "Necessary because PersistedWorldData is internal now.")]
 internal sealed class WorldServiceTest

@@ -111,6 +111,15 @@ internal sealed partial class ServerEntry : ObservableObject
     public partial Bitmap? ServerIcon { get; set; }
 
     [ObservableProperty]
+    public partial double UptimeSeconds { get; set; }
+
+    [ObservableProperty]
+    public partial DateTimeOffset LastSaveTime { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsAutoSaveEnabled { get; set; }
+
+    [ObservableProperty]
     public partial Version Version { get; set; } = NitroxEnvironment.Version;
 
     internal ServerProcess? Process { get; private set; }

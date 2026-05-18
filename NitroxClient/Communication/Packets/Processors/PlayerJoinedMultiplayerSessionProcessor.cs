@@ -1,4 +1,5 @@
 using System.Collections;
+using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
@@ -13,6 +14,14 @@ internal sealed class PlayerJoinedMultiplayerSessionProcessor(PlayerManager play
 
     public Task Process(ClientProcessorContext context, PlayerJoinedMultiplayerSession packet)
     {
+        // Check if this player is reconnecting within the disconnect grace period.
+        Optional<RemotePlayer> existingPlayer = playerManager.Find(packet.PlayerContext.SessionId);
+        if (existingPlayer.HasValue && DisconnectProcessor.TryCancelPendingDisconnect(packet.PlayerContext.SessionId, existingPlayer.Value))
+        {
+            Log.Info($"{packet.PlayerContext.PlayerName} reconnected within grace period");
+            return Task.CompletedTask;
+        }
+
         CoroutineHost.StartCoroutine(SpawnRemotePlayer(packet));
         return Task.CompletedTask;
     }

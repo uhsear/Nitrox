@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipes;
@@ -10,6 +11,7 @@ using Grpc.Core;
 using Grpc.Net.Client;
 using MagicOnion.Client;
 using Nitrox.Model.Constants;
+using Nitrox.Model.Core;
 using Nitrox.Model.MagicOnion;
 using Nitrox.Server.Subnautica.Models.Commands.Core;
 using Nitrox.Server.Subnautica.Models.GameLogic;
@@ -22,15 +24,22 @@ namespace Nitrox.Server.Subnautica.Services;
 /// <summary>
 ///     Connects to a locally running app that might want to track this server. Nitrox.Launcher is expected.
 /// </summary>
-internal sealed class ServersManagementService(PlayerManager playerManager, IPacketSender packetSender, CommandService commandProcessor, IOptions<ServerStartOptions> options, ILogger<ServersManagementService> logger) : BackgroundService
+internal sealed class ServersManagementService(PlayerManager playerManager, IPacketSender packetSender, CommandService commandProcessor, IOptions<SubnauticaServerOptions> serverOptions, IOptions<ServerStartOptions> options, ILogger<ServersManagementService> logger) : BackgroundService
 {
     public static readonly Channel<LogEntry> LogQueue = Channel.CreateBounded<LogEntry>(new BoundedChannelOptions(1000) { FullMode = BoundedChannelFullMode.DropOldest });
     
     private readonly CommandService commandProcessor = commandProcessor;
     private readonly ILogger<ServersManagementService> logger = logger;
     private readonly IOptions<ServerStartOptions> options = options;
+    private readonly IOptions<SubnauticaServerOptions> serverOptions = serverOptions;
     private readonly PlayerManager playerManager = playerManager;
-    
+    private readonly Stopwatch uptimeStopwatch = Stopwatch.StartNew();
+
+    /// <summary>
+    ///     Tracks the last time a save completed successfully. Updated by the save pipeline.
+    /// </summary>
+    internal static DateTimeOffset LastSaveTime { get; set; }
+
     private GrpcChannel? channel;
     private ConnectionInfo? currentConnectionInfo;
     private Task? pushLogsTask;
@@ -156,7 +165,23 @@ internal sealed class ServersManagementService(PlayerManager playerManager, IPac
 
     private async Task PushPollDataAsync(IServersManagement api)
     {
-        await api.SetPlayers(playerManager.ConnectedPlayers().Select(player => player.Name).ToArray());
+        string[] connectedPlayerNames = playerManager.ConnectedPlayers().Select(player => player.Name).ToArray();
+        await api.SetPlayers(connectedPlayerNames);
+
+        SubnauticaServerOptions opts = serverOptions.Value;
+        ServerStatusInfo status = new()
+        {
+            PlayerCount = connectedPlayerNames.Length,
+            MaxPlayers = opts.MaxConnections,
+            UptimeSeconds = uptimeStopwatch.Elapsed.TotalSeconds,
+            Version = NitroxEnvironment.Version.ToString(),
+            SaveName = options.Value.SaveName,
+            LastSaveTime = LastSaveTime,
+            IsAutoSaveEnabled = opts.AutoSave && opts.SaveInterval >= SubnauticaServerOptions.SAVE_INTERVAL_MIN_MS,
+            ServerPort = opts.ServerPort,
+            GameMode = opts.GameMode.ToString()
+        };
+        await api.SetServerStatus(status);
     }
 
     private async Task PushLogsAsync(IServersManagement api, CancellationToken cancellationToken)

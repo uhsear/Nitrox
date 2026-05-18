@@ -29,6 +29,7 @@ internal sealed class SaveService(Func<WorldService> worldServiceProvider, ISave
                 {
                     return;
                 }
+                ServersManagementService.LastSaveTime = DateTimeOffset.Now;
                 await saveStateTrigger.InvokeAsync(new ISaveState.Args(savePath));
                 ExecutePostSaveCommand();
                 BackUp(savePath);

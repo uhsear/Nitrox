@@ -133,6 +133,29 @@ internal static partial class ServiceCollectionExtensions
                             null or "" => newWorldSeed.Value,
                             _ => options.Seed
                         };
+                    })
+                    .PostConfigure<ILoggerFactory>((options, loggerFactory) =>
+                    {
+                        ILogger logger = loggerFactory.CreateLogger(nameof(SubnauticaServerOptions));
+
+                        // Validate and correct out-of-range values with clear log messages, falling back to safe defaults.
+                        if (options.MaxConnections < SubnauticaServerOptions.MAX_CONNECTIONS_MIN)
+                        {
+                            logger.ZLogWarning($"MaxConnections ({options.MaxConnections}) is below minimum ({SubnauticaServerOptions.MAX_CONNECTIONS_MIN}). Resetting to default ({SubnauticaServerOptions.DEFAULT_MAX_CONNECTIONS}).");
+                            options.MaxConnections = SubnauticaServerOptions.DEFAULT_MAX_CONNECTIONS;
+                        }
+
+                        if (options.ServerPort < SubnauticaServerOptions.SERVER_PORT_MIN)
+                        {
+                            logger.ZLogWarning($"ServerPort ({options.ServerPort}) is below {SubnauticaServerOptions.SERVER_PORT_MIN} (reserved port range). Resetting to default ({SubnauticaServerOptions.DEFAULT_SERVER_PORT}).");
+                            options.ServerPort = SubnauticaServerOptions.DEFAULT_SERVER_PORT;
+                        }
+
+                        if (options.AutoSave && options.SaveInterval > 0 && options.SaveInterval < SubnauticaServerOptions.SAVE_INTERVAL_MIN_MS)
+                        {
+                            logger.ZLogWarning($"SaveInterval ({options.SaveInterval}ms) is below minimum ({SubnauticaServerOptions.SAVE_INTERVAL_MIN_MS}ms / 30 seconds). Resetting to default ({SubnauticaServerOptions.DEFAULT_SAVE_INTERVAL_MS}ms).");
+                            options.SaveInterval = SubnauticaServerOptions.DEFAULT_SAVE_INTERVAL_MS;
+                        }
                     });
             services.AddHostedSingletonService<PersistNitroxSerializableConfigService>();
             return services;
