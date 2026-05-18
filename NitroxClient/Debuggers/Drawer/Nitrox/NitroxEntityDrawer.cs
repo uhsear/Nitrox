@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using NitroxClient.GameLogic;
 using NitroxClient.MonoBehaviours;
@@ -7,6 +8,7 @@ using UnityEngine;
 
 namespace NitroxClient.Debuggers.Drawer.Nitrox;
 
+[SuppressMessage("Usage", "DIMA001:Dependency Injection container is used directly", Justification = "Unity debugger drawer cannot use constructor injection")]
 public class NitroxEntityDrawer : IDrawer<NitroxEntity>, IDrawer<NitroxId>
 {
     public void Draw(NitroxEntity nitroxEntity)

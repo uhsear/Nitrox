@@ -70,6 +70,7 @@
         <PackageVersion Include="System.Text.Json" Version="$(NetSdkVersion)" />
         <PackageVersion Include="System.ValueTuple" Version="4.6.1" />
         <PackageVersion Include="ZLogger" Version="2.5.10" />
+        <PackageVersion Include="Tmds.DBus.Protocol" Version="0.21.3" />
     </ItemGroup>
     
 </Project>

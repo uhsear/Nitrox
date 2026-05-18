@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading.Tasks;
 using NitroxClient.Communication.Abstract;
@@ -18,6 +19,7 @@ using UnityEngine;
 
 namespace NitroxClient.MonoBehaviours.Gui.MainMenu.ServerJoin;
 
+[SuppressMessage("Usage", "DIMA001:Dependency Injection container is used directly", Justification = "Static class manages DI lifetime scope and cannot use constructor injection")]
 public static class JoinServerBackend
 {
     private static PlayerPreferenceManager preferencesManager;

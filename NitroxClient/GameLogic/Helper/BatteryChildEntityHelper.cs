@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using NitroxClient.MonoBehaviours;
 using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
@@ -12,9 +13,10 @@ namespace NitroxClient.GameLogic.Helper;
 
 /// <summary>
 /// Vehicles and items are created without a battery loaded into them. Subnautica usually spawns these in async; however, this
-/// is disabled in nitrox so we can properly tag the id. Here we create the installed battery (with a new NitroxId) and have the 
+/// is disabled in nitrox so we can properly tag the id. Here we create the installed battery (with a new NitroxId) and have the
 /// entity spawner take care of loading it in.
 /// </summary>
+[SuppressMessage("Usage", "DIMA001:Dependency Injection container is used directly", Justification = "Static class cannot use constructor injection")]
 public static class BatteryChildEntityHelper
 {
     private static readonly Lazy<Entities> entities = new (() => NitroxServiceLocator.LocateService<Entities>());
