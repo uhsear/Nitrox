@@ -17,7 +17,7 @@ internal sealed class RemoveCreatureCorpseProcessor(Entities entities, LiveMixin
     ///     Calls only some parts from <see cref="CreatureDeath.OnKillAsync" /> to avoid sending packets from it
     ///     or already synced behaviour (like spawning another respawner from the remote clients)
     /// </summary>
-    public static void SafeOnKillAsync(CreatureDeath creatureDeath, NitroxId creatureId, SimulationOwnership simulationOwnership, LiveMixinManager liveMixinManager)
+    public static void SafeOnKillAsync(CreatureDeath creatureDeath, NitroxId creatureId, SimulationOwnership simulationOwnership, LiveMixinManager liveMixinManager, bool lastDamageWasHeat = false)
     {
         // Ensure we don't broadcast anything from this kill event
         simulationOwnership.StopSimulatingEntity(creatureId);
@@ -29,8 +29,10 @@ internal sealed class RemoveCreatureCorpseProcessor(Entities entities, LiveMixin
         creatureDeath.respawn = false;
         creatureDeath.hasSpawnedRespawner = true;
 
-        // To avoid the cooked data section
-        creatureDeath.lastDamageWasHeat = false;
+        // Propagate the heat damage flag so the creature drops cooked food when killed by a Thermoblade.
+        // Previously this was hardcoded to false, causing non-simulating players' HeatBlade kills to
+        // always drop raw fish instead of cooked.
+        creatureDeath.lastDamageWasHeat = lastDamageWasHeat;
 
         // Receiving this packet means the creature is dead
         LiveMixin liveMixin = creatureDeath.liveMixin;
@@ -65,7 +67,7 @@ internal sealed class RemoveCreatureCorpseProcessor(Entities entities, LiveMixin
         creatureDeath.transform.localPosition = packet.DeathPosition.ToUnity();
         creatureDeath.transform.localRotation = packet.DeathRotation.ToUnity();
 
-        SafeOnKillAsync(creatureDeath, packet.CreatureId, simulationOwnership, liveMixinManager);
+        SafeOnKillAsync(creatureDeath, packet.CreatureId, simulationOwnership, liveMixinManager, packet.LastDamageWasHeat);
         return Task.CompletedTask;
     }
 }

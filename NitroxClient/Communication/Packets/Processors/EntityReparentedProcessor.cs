@@ -84,6 +84,15 @@ internal sealed class EntityReparentedProcessor(Entities entities) : IClientPack
         Pickupable pickupable = entity.RequireComponent<Pickupable>();
 
         ItemsContainer container = opContainer.Value;
+
+        // Validate that the container has room before adding the item to prevent capacity overflow.
+        // This prevents issues such as the Water Filtration Machine producing items beyond its 4-slot capacity.
+        if (!container.HasRoomFor(pickupable))
+        {
+            Log.Warn($"Container {newParent.GetFullHierarchyPath()} is full, cannot reparent item {pickupable.GetTechType()}");
+            return;
+        }
+
         container.UnsafeAdd(new InventoryItem(pickupable));
     }
 

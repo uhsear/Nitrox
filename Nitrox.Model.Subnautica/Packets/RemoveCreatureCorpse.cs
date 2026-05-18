@@ -12,10 +12,17 @@ public class RemoveCreatureCorpse : Packet
     public NitroxVector3 DeathPosition { get; }
     public NitroxQuaternion DeathRotation { get; }
 
-    public RemoveCreatureCorpse(NitroxId creatureId, NitroxVector3 deathPosition, NitroxQuaternion deathRotation)
+    /// <summary>
+    /// Whether the killing blow was heat damage (e.g. Thermoblade/HeatBlade).
+    /// When true, the creature should drop a cooked item instead of a raw corpse.
+    /// </summary>
+    public bool LastDamageWasHeat { get; }
+
+    public RemoveCreatureCorpse(NitroxId creatureId, NitroxVector3 deathPosition, NitroxQuaternion deathRotation, bool lastDamageWasHeat = false)
     {
         CreatureId = creatureId;
         DeathPosition = deathPosition;
         DeathRotation = deathRotation;
+        LastDamageWasHeat = lastDamageWasHeat;
     }
 }

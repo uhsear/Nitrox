@@ -4,6 +4,7 @@ using Nitrox.Model.DataStructures;
 using Nitrox.Model.Subnautica.Packets;
 using NitroxClient.Communication.Packets.Processors.Core;
 using NitroxClient.GameLogic;
+using NitroxClient.GameLogic.FMOD;
 using NitroxClient.MonoBehaviours;
 using NitroxClient.MonoBehaviours.Vehicles;
 using NitroxClient.Unity.Helper;
@@ -13,6 +14,12 @@ namespace NitroxClient.Communication.Packets.Processors;
 
 internal sealed class VehicleDockingProcessor(Vehicles vehicles) : IClientPacketProcessor<VehicleDocking>
 {
+    /// <summary>
+    /// Maximum distance (in meters) at which the docking sound should be audible to the local player.
+    /// Beyond this range, FMOD sounds from the docking animation are suppressed.
+    /// </summary>
+    private const float DOCKING_SOUND_RANGE = 100f;
+
     private readonly Vehicles vehicles = vehicles;
 
     public Task Process(ClientProcessorContext context, VehicleDocking packet)
@@ -71,7 +78,23 @@ internal sealed class VehicleDockingProcessor(Vehicles vehicles) : IClientPacket
         LargeWorldStreamer.main.cellManager.UnregisterEntity(bay.dockedVehicle.gameObject);
         bay.dockedVehicle.transform.parent = bay.GetSubRoot().transform;
         vehicle.docked = true;
-        bay.vehicle_docked_param = true;
+
+        // Suppress docking sounds when the local player is too far away to hear them.
+        // The game's docking animation triggers global FMOD events which would otherwise
+        // be audible regardless of distance.
+        float distanceToPlayer = Vector3.Distance(bay.transform.position, Player.main.transform.position);
+        if (distanceToPlayer > DOCKING_SOUND_RANGE)
+        {
+            using (FMODSystem.SuppressSubnauticaSounds())
+            {
+                bay.vehicle_docked_param = true;
+            }
+        }
+        else
+        {
+            bay.vehicle_docked_param = true;
+        }
+
         SkyEnvironmentChanged.Broadcast(vehicle.gameObject, bay.subRoot);
         bay.GetSubRoot().BroadcastMessage("UnlockDoors", SendMessageOptions.DontRequireReceiver);
 

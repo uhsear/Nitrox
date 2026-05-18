@@ -92,6 +92,15 @@ public class InventoryItemEntitySpawner(EntityMetadataManager entityMetadataMana
         Pickupable pickupable = gameObject.RequireComponent<Pickupable>();
         pickupable.Initialize();
 
+        // Validate that the container has room before adding the item to prevent capacity overflow.
+        // This is important for machines like the Water Filtration Machine which have limited slots.
+        if (!container.HasRoomFor(pickupable))
+        {
+            Log.Warn($"Container {parentObject.GetFullHierarchyPath()} is full, cannot add item {pickupable.GetTechType()} ({entity.Id}). Destroying spawned object.");
+            UnityEngine.Object.Destroy(gameObject);
+            return;
+        }
+
         InventoryItem inventoryItem = new(pickupable);
 
         // Items eventually get "secured" once a player gets into a SubRoot (or for other reasons) so we need to force this state by default
