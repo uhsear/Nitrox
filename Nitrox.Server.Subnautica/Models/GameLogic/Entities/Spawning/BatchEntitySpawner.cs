@@ -41,6 +41,13 @@ internal sealed class BatchEntitySpawner(
     private readonly ConcurrentDictionary<NitroxInt3, Lazy<Task<List<Entity>>>> batchLoadTasks = new();
     private readonly Lock emptyBatchesLock = new();
 
+    /// <summary>
+    /// Maximum number of creatures of the same species allowed per batch. This prevents excessive
+    /// spawn rates for aggressive small creatures (e.g., Blighters) which can cause lag from corpse
+    /// accumulation when killed in multiplayer (Issue #2745).
+    /// </summary>
+    private const int MAX_CREATURES_PER_SPECIES_PER_BATCH = 4;
+
     public List<NitroxInt3> SerializableParsedBatches
     {
         get
@@ -105,7 +112,39 @@ internal sealed class BatchEntitySpawner(
             }
         }
 
+        EnforcePerSpeciesSpawnCap(entities);
+
         return entities;
+    }
+
+    /// <summary>
+    /// Caps the number of creatures of the same species in a batch to prevent excessive spawning.
+    /// Creatures like Blighters can spawn in large numbers, and when killed their corpses accumulate
+    /// causing significant lag in multiplayer sessions (Issue #2745).
+    /// Only applies to creature types listed in <see cref="SimulationWhitelist.MovementWhitelist"/>.
+    /// </summary>
+    private void EnforcePerSpeciesSpawnCap(List<Entity> entities)
+    {
+        Dictionary<NitroxTechType, int> speciesCounts = new();
+
+        for (int i = entities.Count - 1; i >= 0; i--)
+        {
+            Entity entity = entities[i];
+            if (entity.TechType == null || !SimulationWhitelist.MovementWhitelist.Contains(entity.TechType))
+            {
+                continue;
+            }
+
+            speciesCounts.TryGetValue(entity.TechType, out int count);
+            count++;
+            speciesCounts[entity.TechType] = count;
+
+            if (count > MAX_CREATURES_PER_SPECIES_PER_BATCH)
+            {
+                logger.ZLogDebug($"Per-species spawn cap reached for {entity.TechType} in batch, removing excess entity {entity.Id}");
+                entities.RemoveAt(i);
+            }
+        }
     }
 
     /// <inheritdoc cref="CreateEntityWithChildrenAsync" />

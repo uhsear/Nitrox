@@ -176,13 +176,25 @@ public abstract class MovementReplicator : MonoBehaviour
 
         float t = (currentTime - firstNode.Value.Time) / (nextNode.Value.Time - firstNode.Value.Time);
 
-        transform.position = Vector3.Lerp(prevData.Position.ToUnity(), nextData.Position.ToUnity(), t);
+        Vector3 targetPosition = Vector3.Lerp(prevData.Position.ToUnity(), nextData.Position.ToUnity(), t);
+        Quaternion targetRotation = Quaternion.Lerp(prevData.Rotation.ToUnity(), nextData.Rotation.ToUnity(), t);
 
-        transform.rotation = Quaternion.Lerp(prevData.Rotation.ToUnity(), nextData.Rotation.ToUnity(), t);
+        // Use Rigidbody.MovePosition/MoveRotation instead of direct transform assignment
+        // so that physics collisions are respected. This prevents remote players from being
+        // able to pass through the replicated object (e.g., Cyclops). The Rigidbody methods
+        // will push colliding objects out of the way during the physics step.
+        if (rigidbody && !rigidbody.isKinematic)
+        {
+            rigidbody.MovePosition(targetPosition);
+            rigidbody.MoveRotation(targetRotation);
+        }
+        else
+        {
+            transform.position = targetPosition;
+            transform.rotation = targetRotation;
+        }
 
         ApplyNewMovementData(nextData);
-
-        // TODO: fix remote players being able to go through the object (ex: cyclops)
     }
 
     public abstract void ApplyNewMovementData(MovementData newMovementData);
