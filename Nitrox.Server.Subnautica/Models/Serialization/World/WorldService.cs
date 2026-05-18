@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Security.Cryptography;
 using Nitrox.Model.Core;
 using Nitrox.Model.DataStructures;
 using Nitrox.Model.DataStructures.Unity;
@@ -21,6 +23,11 @@ namespace Nitrox.Server.Subnautica.Models.Serialization.World;
 
 internal class WorldService : IHostedService
 {
+    /// <summary>
+    ///     The expected total number of entities when all batches have been fully spawned and cached.
+    /// </summary>
+    private const int EXPECTED_FULL_ENTITY_CACHE_COUNT = 504732;
+
     private readonly BatchEntitySpawner batchEntitySpawner;
     private readonly EntityRegistry entityRegistry;
     private readonly EscapePodManager escapePodManager;
@@ -116,7 +123,7 @@ internal class WorldService : IHostedService
                 logger.ZLogInformation($"Starting to load all batches up front.");
                 logger.ZLogInformation($"This can take up to several minutes and you can't join until it's completed.");
                 logger.ZLogInformation($"{entityRegistry.GetAllEntities().Count} entities already cached");
-                if (entityRegistry.GetAllEntities().Count < 504732)
+                if (entityRegistry.GetAllEntities().Count < EXPECTED_FULL_ENTITY_CACHE_COUNT)
                 {
                     await worldEntityManager.LoadAllUnspawnedEntitiesAsync(cancellationToken);
 
@@ -160,12 +167,97 @@ internal class WorldService : IHostedService
             Serializer.Serialize(Path.Combine(saveDir, $"GlobalRootData{FileEnding}"), persistedData.GlobalRootData);
             Serializer.Serialize(Path.Combine(saveDir, $"EntityData{FileEnding}"), persistedData.EntityData);
 
+            WriteSaveChecksums(saveDir);
+
             logger.ZLogInformation($"World state saved");
             return true;
         }
         catch (Exception ex)
         {
             logger.ZLogError(ex, $"Could not save world :");
+            return false;
+        }
+    }
+
+    private static readonly string[] SAVE_FILE_NAMES = ["PlayerData", "WorldData", "GlobalRootData", "EntityData"];
+
+    /// <summary>
+    ///     Computes SHA256 checksums for each save data file and writes them to a single .checksums file.
+    /// </summary>
+    private void WriteSaveChecksums(string saveDir)
+    {
+        try
+        {
+            string checksumFilePath = Path.Combine(saveDir, "save.checksums");
+            using StreamWriter writer = new(checksumFilePath, false);
+            foreach (string fileName in SAVE_FILE_NAMES)
+            {
+                string filePath = Path.Combine(saveDir, $"{fileName}{FileEnding}");
+                if (File.Exists(filePath))
+                {
+                    byte[] fileBytes = File.ReadAllBytes(filePath);
+                    byte[] hash = SHA256.HashData(fileBytes);
+                    writer.WriteLine($"{fileName}{FileEnding}={Convert.ToHexString(hash)}");
+                }
+            }
+            logger.ZLogTrace($"Save checksums written");
+        }
+        catch (Exception ex)
+        {
+            logger.ZLogWarning(ex, $"Failed to write save checksums (save data is still intact)");
+        }
+    }
+
+    /// <summary>
+    ///     Verifies SHA256 checksums for save data files. Returns true if all checksums match or if no checksum file exists.
+    /// </summary>
+    private bool VerifySaveChecksums(string saveDir)
+    {
+        string checksumFilePath = Path.Combine(saveDir, "save.checksums");
+        if (!File.Exists(checksumFilePath))
+        {
+            logger.ZLogTrace($"No checksum file found, skipping integrity verification");
+            return true;
+        }
+
+        try
+        {
+            Dictionary<string, string> expectedChecksums = [];
+            foreach (string line in File.ReadAllLines(checksumFilePath))
+            {
+                int separatorIndex = line.IndexOf('=');
+                if (separatorIndex > 0)
+                {
+                    string fileName = line.Substring(0, separatorIndex);
+                    string checksum = line.Substring(separatorIndex + 1);
+                    expectedChecksums[fileName] = checksum;
+                }
+            }
+
+            foreach (KeyValuePair<string, string> entry in expectedChecksums)
+            {
+                string filePath = Path.Combine(saveDir, entry.Key);
+                if (!File.Exists(filePath))
+                {
+                    logger.ZLogError($"Save file {entry.Key} is missing but was expected by checksum");
+                    return false;
+                }
+
+                byte[] fileBytes = File.ReadAllBytes(filePath);
+                string actualChecksum = Convert.ToHexString(SHA256.HashData(fileBytes));
+                if (!string.Equals(actualChecksum, entry.Value, StringComparison.OrdinalIgnoreCase))
+                {
+                    logger.ZLogError($"Checksum mismatch for {entry.Key}: expected {entry.Value}, got {actualChecksum}");
+                    return false;
+                }
+            }
+
+            logger.ZLogTrace($"All save file checksums verified successfully");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            logger.ZLogWarning(ex, $"Failed to verify save checksums");
             return false;
         }
     }
@@ -359,6 +451,17 @@ internal class WorldService : IHostedService
 
         UpgradeSave(saveDir);
 
+        if (!VerifySaveChecksums(saveDir))
+        {
+            logger.ZLogWarning($"Save data integrity check failed, attempting to load from most recent backup");
+            if (TryLoadFromBackup(saveDir, out PersistedWorldData backupData))
+            {
+                await LoadPersistedWorldIntoServicesAsync(backupData);
+                return true;
+            }
+            logger.ZLogError($"No valid backup found. Attempting to load potentially corrupted save anyway.");
+        }
+
         PersistedWorldData persistedData = LoadPersistedWorld(saveDir);
         if (persistedData == null)
         {
@@ -366,6 +469,79 @@ internal class WorldService : IHostedService
         }
         await LoadPersistedWorldIntoServicesAsync(persistedData);
         return true;
+    }
+
+    /// <summary>
+    ///     Attempts to load world data from the most recent valid backup.
+    /// </summary>
+    private bool TryLoadFromBackup(string saveDir, out PersistedWorldData backupData)
+    {
+        backupData = null;
+        try
+        {
+            string backupDir = Path.Combine(saveDir, "Backups");
+            if (!Directory.Exists(backupDir))
+            {
+                logger.ZLogWarning($"No backup directory found at {backupDir}");
+                return false;
+            }
+
+            FileInfo[] backups = Directory.EnumerateFiles(backupDir, "*.zip")
+                                          .Select(f => new FileInfo(f))
+                                          .Where(f => f.Name.Contains("Backup - "))
+                                          .OrderByDescending(f => f.CreationTime)
+                                          .ToArray();
+
+            if (backups.Length == 0)
+            {
+                logger.ZLogWarning($"No backup files found");
+                return false;
+            }
+
+            foreach (FileInfo backup in backups)
+            {
+                try
+                {
+                    string tempRestoreDir = Path.Combine(saveDir, "temp_backup_restore");
+                    if (Directory.Exists(tempRestoreDir))
+                    {
+                        Directory.Delete(tempRestoreDir, true);
+                    }
+
+                    System.IO.Compression.ZipFile.ExtractToDirectory(backup.FullName, tempRestoreDir);
+                    logger.ZLogInformation($"Attempting to load backup: {backup.Name}");
+
+                    PersistedWorldData restoredData = LoadPersistedWorld(tempRestoreDir);
+                    Directory.Delete(tempRestoreDir, true);
+
+                    if (restoredData != null)
+                    {
+                        logger.ZLogInformation($"Successfully loaded backup: {backup.Name}");
+                        backupData = restoredData;
+                        return true;
+                    }
+
+                    logger.ZLogWarning($"Backup {backup.Name} could not be loaded, trying next backup");
+                }
+                catch (Exception ex)
+                {
+                    logger.ZLogWarning(ex, $"Failed to restore backup {backup.Name}");
+                    string tempDir = Path.Combine(saveDir, "temp_backup_restore");
+                    if (Directory.Exists(tempDir))
+                    {
+                        try { Directory.Delete(tempDir, true); } catch { }
+                    }
+                }
+            }
+
+            logger.ZLogError($"All {backups.Length} backups failed to load");
+        }
+        catch (Exception ex)
+        {
+            logger.ZLogError(ex, $"Error while attempting backup restoration");
+        }
+
+        return false;
     }
 
     private async Task CreateAndLoadWorldAsync()

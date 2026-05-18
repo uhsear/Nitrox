@@ -117,7 +117,7 @@
                                 Height="28"
                                 HorizontalAlignment="Right"
                                 IsHitTestVisible="{Binding ShowResetArgsBtn}"
-                                Opacity="{Binding ShowResetArgsBtn, Converter={converters:BoolToDoubleConverter}}"
+                                Opacity="{Binding ShowResetArgsBtn, Converter={converters:BoolToOpacityConverter}}"
                                 Margin="0,0,12,0"
                                 Padding="0"
                                 ToolTip.Tip="Reset arguments"

@@ -7,7 +7,7 @@ namespace Nitrox.Launcher.Models.Converters;
 ///     Formats the bound value as a double from a boolean.
 ///     When the value is true, it returns 1.0. When false, it returns 0.0.
 /// </summary>
-public class BoolToDoubleConverter : Converter<BoolToDoubleConverter>
+public class BoolToOpacityConverter : Converter<BoolToOpacityConverter>
 {
     public override object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {

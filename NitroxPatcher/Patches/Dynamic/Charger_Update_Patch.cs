@@ -13,6 +13,11 @@ namespace NitroxPatcher.Patches.Dynamic;
 /// </summary>
 public sealed partial class Charger_Update_Patch : NitroxPatch, IDynamicPatch
 {
+    /// <summary>
+    ///     The regular interval in seconds between two charge attempts (see Charger.Update).
+    /// </summary>
+    private const float CHARGE_ATTEMPT_INTERVAL_SECONDS = 5f;
+
     public static readonly MethodInfo TARGET_METHOD = Reflect.Method((Charger t) => t.Update());
 
     /*
@@ -47,7 +52,7 @@ public sealed partial class Charger_Update_Patch : NitroxPatch, IDynamicPatch
             !Resolve<SimulationOwnership>().HasAnyLockType(parentId))
         {
             // 5 seconds is the regular value between two attempts (see Update)
-            charger.nextChargeAttemptTimer = 5f;
+            charger.nextChargeAttemptTimer = CHARGE_ATTEMPT_INTERVAL_SECONDS;
 
             // Copied from Update to ensure UI is still updated
             charger.ToggleUIPowered(true);

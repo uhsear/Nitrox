@@ -22,10 +22,22 @@ public sealed class NtpSyncer
     /// </remarks>
     private const float TIMEOUT_INTERVAL = 5000;
 
+    /// <summary>
+    ///     Number of consecutive failures before the circuit breaker opens and stops retrying.
+    /// </summary>
+    private const int CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+
+    /// <summary>
+    ///     Duration in milliseconds to wait before retrying after the circuit breaker opens.
+    /// </summary>
+    private const double CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
+
     private ILogger<NtpSyncer> logger = NullLogger<NtpSyncer>.Instance;
     private LiteNetLibNtp ntp;
 
     private Timer? timer;
+    private int consecutiveFailureCount;
+    private DateTime circuitBreakerOpenedAt = DateTime.MinValue;
 
     public bool IsComplete { get; private set; }
     public bool OnlineMode { get; private set; }
@@ -57,6 +69,22 @@ public sealed class NtpSyncer
             return;
         }
 
+        // Circuit breaker: if we've hit the failure threshold, wait for the cooldown period before retrying
+        if (consecutiveFailureCount >= CIRCUIT_BREAKER_FAILURE_THRESHOLD)
+        {
+            double elapsedSinceOpen = (DateTime.UtcNow - circuitBreakerOpenedAt).TotalMilliseconds;
+            if (elapsedSinceOpen < CIRCUIT_BREAKER_COOLDOWN_MS)
+            {
+                logger.LogWarning($"NTP sync circuit breaker is open after {consecutiveFailureCount} consecutive failures. Will retry after {(CIRCUIT_BREAKER_COOLDOWN_MS - elapsedSinceOpen) / 1000:F0}s cooldown.");
+                Complete();
+                return;
+            }
+
+            // Cooldown elapsed, reset and allow retry
+            logger.LogInformation("NTP sync circuit breaker cooldown elapsed, retrying...");
+            consecutiveFailureCount = 0;
+        }
+
         try
         {
             if (ntp.CreateNextNtpRequest() == null)
@@ -69,6 +97,14 @@ public sealed class NtpSyncer
         }
         catch (Exception ex)
         {
+            consecutiveFailureCount++;
+            if (consecutiveFailureCount >= CIRCUIT_BREAKER_FAILURE_THRESHOLD)
+            {
+                circuitBreakerOpenedAt = DateTime.UtcNow;
+                logger.LogError($"NTP sync failed {consecutiveFailureCount} consecutive times. Circuit breaker opened; pausing retries for {CIRCUIT_BREAKER_COOLDOWN_MS / 1000 / 60} minutes. Last error with '{ntp.LatestUsedService}': {ex.GetType()}: {ex.Message}");
+                Complete();
+                return;
+            }
             logger.LogError($"An error occurred during NTP sync sequence with '{ntp.LatestUsedService}', retrying with another one... ({ex.GetType()}: {ex.Message})");
             timer.Stop();
             RequestNtpService();
@@ -103,6 +139,7 @@ public sealed class NtpSyncer
 
         if (ntpPacket != null)
         {
+            consecutiveFailureCount = 0;
             OnlineMode = true;
             CorrectionOffset = ntpPacket.CorrectionOffset;
             Complete();
@@ -110,6 +147,14 @@ public sealed class NtpSyncer
         }
         else
         {
+            consecutiveFailureCount++;
+            if (consecutiveFailureCount >= CIRCUIT_BREAKER_FAILURE_THRESHOLD)
+            {
+                circuitBreakerOpenedAt = DateTime.UtcNow;
+                logger.LogError($"NTP sync failed {consecutiveFailureCount} consecutive times. Circuit breaker opened; pausing retries for {CIRCUIT_BREAKER_COOLDOWN_MS / 1000 / 60} minutes.");
+                Complete();
+                return;
+            }
             logger.LogError($"NTP request error at {ntp.LatestUsedService}, retrying with another service...");
             RequestNtpService();
         }
